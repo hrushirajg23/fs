@@ -16,6 +16,19 @@ struct ii_node inode_table[TOTAL_INODES];
 static void write_inode(struct ii_node* inode);
 static void read_inode(struct ii_node* inode);
 
+static struct ii_node* get_inode(int num){
+    int index=_hashfn(DEVICE_NUM,num);
+    struct ii_node* inode=i_pool.i_heads[index].head;
+
+    while(inode!=NULL){
+        if(inode->i_num==num){
+            return inode;
+        }
+        inode=inode->next;
+    }
+    return NULL;
+}
+
 static inline void wait_on_inode(struct ii_node* inode){
     while(inode->i_status.i_lock){  //while inode lock==1
         continue;
@@ -33,7 +46,7 @@ static inline void unlock_inode(struct ii_node* inode){
 
 
 static struct ii_node* create_inode(int i_num){
-        struct ii_node* inode=NULL;
+        struct ii_node* inode=(struct ii_node*)malloc(sizeof(struct ii_node));
         inode->i_num=i_num;
         inode->i_access_time=0;
         inode->i_change_time=0;
@@ -58,6 +71,7 @@ static struct ii_node* create_inode(int i_num){
             inode->i_status.i_mount=false;
         }
         memset(inode->i_disk,0,sizeof(inode->i_disk));
+        return inode;
 }
 void sync_inodes(void){
     int i=0;
@@ -92,12 +106,26 @@ static void insert_into_ipool(struct ii_node* inode){
         i_list.tail->nextfree=inode;
         inode->prevfree=i_list.tail;
         i_list.tail=inode;
+        i_list.head->prevfree=i_list.tail;
+    i_list.tail->nextfree=i_list.head;
     }
-    i_list.head->nextfree=i_list.tail;
-    i_list.tail->prevfree=i_list.head;
+    
 
 }
+static void insert_into_ilist(struct ii_node* inode){
+    if(i_list.head==NULL && i_list.tail==NULL){
+        i_list.head=inode;
+        i_list.tail=inode;
+    }
+    else{
+        i_list.tail->nextfree=inode;
+        inode->prevfree=i_list.tail;
+        i_list.tail=inode;
 
+        i_list.tail->nextfree=i_list.head;
+        i_list.head->prevfree=i_list.tail;
+    }
+}
 struct ii_node* get_i_from_pool(int dev,int i_num){
     int index=_hashfn(dev,i_num);
     struct ii_node* inode=i_pool.i_heads[index].head;
@@ -112,10 +140,10 @@ struct ii_node* get_i_from_pool(int dev,int i_num){
 
 static struct ii_node* deletelast(struct ii_node* inode){
     struct ii_node* get=NULL;
-    if(inode->prevfree==NULL && inode->nextfree==NULL){
+    if(i_list.head==NULL && i_list.tail==NULL){
         return NULL;
     }
-    else if(inode->prevfree==inode->nextfree){  //only one inode exists
+    else if(i_list.head==i_list.tail){  //only one inode exists
         get=inode;
         inode->prevfree=NULL;
         inode->nextfree=NULL;
@@ -151,20 +179,16 @@ static struct ii_node* deletefirst(struct ii_node* inode){
         get=i_list.head;
         i_list.tail->nextfree=i_list.head->nextfree;
         i_list.head->nextfree->prevfree=i_list.tail;
-
+        i_list.head=i_list.head->nextfree;
         i_list.tail->nextfree=i_list.head;
         i_list.head->prevfree=i_list.tail;
     }
     return get;
 }
 
-static struct ii_node* remove_from_ilist(int dev,int i_num){
-    struct ii_node* inode=NULL;
+static struct ii_node* remove_from_ilist(struct ii_node* inode){
     struct ii_node* get=NULL;
-    if(!(inode=get_i_from_pool(dev,i_num))){
-        panic("No such inode \n");
-    }
-    if(inode->prevfree==NULL && inode->nextfree==NULL){
+    if(i_list.head==NULL && i_list.tail==NULL){
         return NULL;
     }
     else if(inode->prevfree==inode->nextfree){  //only one inode exists
@@ -177,11 +201,13 @@ static struct ii_node* remove_from_ilist(int dev,int i_num){
             get=deletelast(inode);
             get->nextfree=NULL;
             get->prevfree=NULL;
+            puts("Case delete last \n");
         }
         else if(inode->prevfree==i_list.tail){  //removing if inode is first in circular list
             get=deletefirst(inode);
             get->nextfree=NULL;
             get->prevfree=NULL;
+            puts("Case delete first\n");
         }
         else{       //if in middle
             inode->nextfree->prevfree=inode->prevfree;
@@ -189,6 +215,7 @@ static struct ii_node* remove_from_ilist(int dev,int i_num){
             inode->nextfree=NULL;
             inode->prevfree=NULL;
             get=inode;
+            puts("Case delete from middle\n");
         }
 
     }
@@ -212,15 +239,13 @@ static struct ii_node* remove_from_ipool(struct ii_node* inode){
             get=i_pool.i_heads[index].head;
             i_pool.i_heads[index].head=i_pool.i_heads[index].head->next;
             i_pool.i_heads[index].head->prev=NULL;
-            get->next=NULL;
-            get->prev=NULL;
+            
         }
         else if(i_pool.i_heads[index].tail==inode){ //delete last of doubly LL
             get=i_pool.i_heads[index].tail;
             i_pool.i_heads[index].tail=i_pool.i_heads[index].tail->prev;
             i_pool.i_heads[index].tail->next=NULL;
-            get->next=NULL;
-            get->prev=NULL;
+            
         }
         else{
                 get=inode;
@@ -230,6 +255,8 @@ static struct ii_node* remove_from_ipool(struct ii_node* inode){
                 get->prev=NULL;            
         }
     }
+     get->next=NULL;
+    get->prev=NULL;
     return get;
 
 }
@@ -243,15 +270,35 @@ void init_inodes(){
     }
     i_list.head=NULL;
     i_list.tail=NULL;
-    int i=1;
-    for(i=1;i<=total_inodes;i++){
+    int i=0;
+    for(i=0;i<TOTAL_INODES;i++){
         struct ii_node* inode=create_inode(i);
+        //printf("Created inode %d\n",i);
         insert_into_ipool(inode);
+        //insert_into_ilist(inode);
     }
 };
 
 
-
+void display_inodes(){
+    struct ii_node* inode=NULL;
+    for(int i=0;i<NR_HASH;i++){
+        printf("For header number %d\n",i);
+        inode=i_pool.i_heads[i].head;
+        while(inode!=NULL){
+            printf("inode number %d\n",inode->i_num);
+            inode=inode->next;
+        }
+        puts("\n");
+    }
+    puts("Displaying free inodes\n");
+    inode=i_list.head;
+    do{
+        printf("i_num %d\t",inode->i_num);
+        inode=inode->nextfree;
+    }while(inode!=i_list.head);
+    puts("\n");
+}
 
 /*
     @return: inode of given number
@@ -259,8 +306,6 @@ void init_inodes(){
             inode number
 
 */
-
-
 struct ii_node* iget(int dev,int i_num){
     struct ii_node* get=NULL;
     repeat:
@@ -270,7 +315,8 @@ struct ii_node* iget(int dev,int i_num){
                 goto repeat;
             }
             if(get->filetype==0){
-                get=remove_from_ilist(dev,i_num);
+                get=remove_from_ilist(get);
+                printf("Removed from ilist inode number %d\n",get->i_num);  
             }
             get->i_refcount++;
             return get;
@@ -285,11 +331,29 @@ struct ii_node* iget(int dev,int i_num){
         get->i_num=i_num;/* Reseting inode_num and placing it on correct hashqueue */
        get->i_dev=dev;
         insert_into_ipool(get);
-        int block=2+(get->i_num-1)/INODES_PER_BLOCK;
+        //int block=2+(get->i_num-1)/INODES_PER_BLOCK;
         read_inode(get);
         get->i_refcount++;
         return get;
 }
+
+void iput(struct ii_node* inode){
+    lock_inode(inode);
+    inode->i_refcount--;
+    if(inode->i_refcount==0){
+        if(inode->i_nlinks==0){
+            //free disk blocks of respective file
+            inode->filetype=0;
+           // ifree(inode);
+        }
+        if(inode->i_status.update==true){
+            write_inode(inode);
+        }
+        insert_into_ilist(inode);
+    }
+    unlock_inode(inode);
+}
+
 
 /*
     @brief: This function reads an disk_inode into in-core inode
@@ -299,6 +363,7 @@ struct ii_node* iget(int dev,int i_num){
 
 
 */
+
 static void read_inode(struct ii_node* inode){
     struct super* sb=NULL;
     struct buffer_head* bh=NULL;
@@ -313,6 +378,15 @@ static void read_inode(struct ii_node* inode){
         As we'll not be performing bit-operations
     */
     block=2+(inode->i_num-1)/INODES_PER_BLOCK;
+
+    /*
+        Suppose INODES_PER_BLOCK =28 
+        i.e 0th index to 27th index i.e inode 1 to 28 will be in logical block 3 
+        and 28 to 56 will be in logical block 4
+
+    
+    
+    */
   //  block=deb.dilb[inode->i]
     /*
         s_imap_blocks: A bit-map for indication of free/locked inodes
@@ -323,7 +397,7 @@ static void read_inode(struct ii_node* inode){
     if(!(bh=bread(inode->i_dev,block)))
         panic("unable to read inode-block\n");
     
-    *(struct disk_inode*)inode=((struct disk_inode*)bh->b_data)[(inode->i_num)%INODES_PER_BLOCK];
+    *(struct disk_inode*)inode=((struct disk_inode*)bh->b_data)[(inode->i_num-1)%INODES_PER_BLOCK];
     brelse(bh);
     unlock_inode(inode);
 
@@ -346,7 +420,7 @@ static void write_inode(struct ii_node* inode){
     lock_inode(inode);
     sb=get_super(inode->i_dev);
    // block=2+sb->s_imap_blocks+sb->s_zmap_blocks+(inode->i_num-1)/INODES_PER_BLOCK;
-
+    block=2+(inode->i_num-1)/INODES_PER_BLOCK;
     if(!(bh=bread(inode->i_dev,block)))
         panic("unable to read i-node block\n");
     int index=(inode->i_num-1)%INODES_PER_BLOCK; //for zero-indexing of array
@@ -369,3 +443,82 @@ static void write_inode(struct ii_node* inode){
     //writing 
 }
 
+/*
+    @brief: allocates inode to a new file
+*/
+struct ii_node* ialloc(int dev){
+    int block=0;
+   while(1){
+
+     if(super_block.s_locked==true){
+        //sleep(event: super block becomes free)
+        continue;
+     }
+     if(super_block.s_next_free_inode<0){
+        super_block.s_locked=true;
+        int index=0;
+        int c=0;
+        block=2+(super_block.remembered_inode-1)/INODES_PER_BLOCK;
+        struct buffer_head* bh=bread(dev,block);
+        if(bh==NULL){
+            panic("Couldn't allocate block in alloc\n");
+        }
+        c=TOTAL_INODES;
+        while(c >=0){ //jo paryant super-block chi list bharat nahi
+            struct ii_node* inode=get_inode(super_block.remembered_inode+1+TOTAL_INODES-c);
+            index=(TOTAL_INODES-c)%INODES_PER_BLOCK;
+            *(struct disk_inode*)inode=((struct disk_inode*)bh->b_data)[index];
+            if(inode->filetype==0){
+                super_block.s_free_inodes_ls[c]=inode->i_num;
+            }
+            inode->i_status.update=true;
+            if((TOTAL_INODES-c)+super_block.remembered_inode>50){
+                puts("inodes over\n");
+                break;
+            }
+            c--;
+        }
+
+        brelse(bh);
+        super_block.s_locked=false;
+        /*
+            if(no free inodes found)
+                return no inodes
+        */
+        super_block.remembered_inode+=TOTAL_INODES-c;
+    }
+    int get=super_block.s_free_inodes_ls[super_block.s_next_free_inode--];
+    struct ii_node* inode=iget(dev,get);
+    //create_inode(get);
+    if(inode->i_status.update==false){
+        block=2+(super_block.remembered_inode-1)/INODES_PER_BLOCK;
+        struct buffer_head* buf=bread(dev,block);
+        int index=0;
+        index=(get-1)%INODES_PER_BLOCK;
+        *(struct disk_inode*)inode=((struct disk_inode*)buf->b_data)[index];
+    }
+    inode->i_status.update=true;  //marking inode is read from disk
+    inode->i_status.i_dirt=true;//is in-use
+    return inode;
+
+   }
+}
+
+/*
+    @brief: make inode free
+
+*/
+void ifree(int num){
+    
+    super_block.s_next_free_inode++;
+    if(super_block.s_locked)
+        return;
+    if(super_block.s_next_free_inode==TOTAL_INODES-1){
+        if(num < super_block.remembered_inode){
+            super_block.remembered_inode=num;
+        }
+    }
+    else{
+        super_block.s_free_inodes_ls[super_block.s_next_free_inode++]=num;
+    }
+}

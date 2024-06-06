@@ -5,7 +5,7 @@
 #include<stdlib.h>
 #ifndef _FILESYS_H
 #define _FILESYS_H
-#define TOTAL_INODES 32
+#define TOTAL_INODES 28
 #define FILE_TABLE_SIZE 64
 #define TOTAL_BUFFERS tot_buffs
 #define BLOCK_SIZE 1024
@@ -15,13 +15,17 @@
 #define READ 0
 #define WRITE 1
 
+#define REGULAR 1
+#define DIR 2
+#define SPECIAL 3
+
 #define DEVICE_NUM 4
 //assuming this
 
 #define I_MAP_SLOTS 8
 #define Z_MAP_SLOTS 8
 
-#define TOTAL_BLOCKS 96
+#define TOTAL_BLOCKS 100
 extern int total_inodes;
 
 #define INODES_PER_BLOCK ((BLOCK_SIZE)/sizeof(struct disk_inode))
@@ -108,7 +112,25 @@ struct file{
     off_t f_pos_write; //write offset
 };
 
+/*
+    @brief: I/O parameters used in uarea
+*/
+struct u_io{
+    unsigned short mode;  //READ or WRITE
+    int count; //number of bytes to read or write
+    int offset; //byte offset in file
+    char* address; //target address to copy data, in user memory
+};
 
+/*
+    @brief: user area of process
+*/
+struct u_area {
+    int fd_arrays[50];
+    struct ii_node* curr_dir;
+    struct ii_node* root;
+    struct u_io io;
+}uarea;
 
 
 struct super{
@@ -119,14 +141,14 @@ struct super{
     unsigned short s_nfree_blk; //number of freeblocks
     unsigned short s_free_blk_ls[50]; //list of free disk block numbers
     unsigned short s_next_free_blk; //index of next_free block number
-
+    int* blk_list;
     /*
         Regarding inode
     */
     unsigned short s_nfree_inodes; //number of free inodes
-    unsigned short s_free_inodes_ls[50]; //list of free inodes
+    unsigned short s_free_inodes_ls[TOTAL_INODES]; //list of free inodes
     unsigned short s_next_free_inode; //index of next free inode on free inode list
-    
+    short remembered_inode;
     /*
         Others
     */
@@ -224,6 +246,8 @@ extern int create_block(struct ii_node* inode,int block);
 extern struct ii_node* namei(const char* pathname);
 extern int open_namei(const char* pathname,int flag,int mode,struct ii_node** res_inode);
 extern void iput(struct ii_node* inode);
+
+extern void init_inodes();
 extern struct ii_node* iget(int dev,int num);
 extern struct ii_node* get_empty_inode(void);
 extern struct buffer_head* get_hash_table(int dev,int block);
@@ -232,13 +256,21 @@ extern void ll_rw_block(int rw,struct buffer_head* bh);
 extern void brelse(struct buffer_head* buf);
 extern struct buffer_head* bread(int dev,int block);
 extern void bwrite(struct buffer_head* bh);
+extern void init_buffers();
+
+extern struct buffer_head* alloc(int dev);
+extern void free_blk(int num);
+
 extern int new_block(int dev);
 extern void free_block(int dev,int block);
 extern struct ii_node* new_inode(int dev);
-extern void free_inode(struct ii_node* inode);
+extern void ifree(int num);
 extern void sync_inodes(void);
-extern void mount_root(void);
-
+extern void mount_root(int dev);
+extern struct ii_node* ialloc(int dev);
+extern void display_inodes();
+extern void display_buffers();
+extern void display_super();
 /*
 extern tells the compiler that the function or variable is defined in another source file or translation unit
 inline suggests to the compiler to inline the function to reduce call overhead.
@@ -256,7 +288,7 @@ struct filesystem{
 };
 
 extern struct filesystem deb;
-extern char logical_blocks[BLOCK_SIZE*100];
+extern char logical_blocks[BLOCK_SIZE*TOTAL_BLOCKS];
 
 extern void copy_to_logical_blocks(char* logical_blocks,struct filesystem* fs);
 

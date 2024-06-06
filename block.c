@@ -83,25 +83,13 @@ int block_read(int dev,long* pos,char* buf,int count){
 
 extern void rw_hd(int rw,struct buffer_head* bh);
 
-void (*blk_fn)(int rw,struct buffer_head* bh);
-
-
-// static blk_fn rd_blk[]={
-//      NULL,
-//      NULL,
-//      NULL,
-//      rw_hd,
-//      NULL,
-//      NULL,
-//      NULL
-// };
-
-
-
-int blk_addr;
+struct buffer_head* alloc(int dev){
+     
+}
 void ll_rw_block(int rw,struct buffer_head* bh){
      int blkno=bh->b_blocknr;
      if(rw==READ){
+          printf("\nReading from %p to %p\n",&logical_blocks[blkno*BLOCK_SIZE],&logical_blocks[blkno*2*BLOCK_SIZE]);
           strncpy(bh->b_data,&logical_blocks[blkno*BLOCK_SIZE],BLOCK_SIZE);
      }
      else if(rw==WRITE){

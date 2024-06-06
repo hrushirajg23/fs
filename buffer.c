@@ -20,9 +20,9 @@ struct freehead freelist;
 
 
 static inline void wait_on_buffer(struct buffer_head* bh){
-    while(bh->b_status.b_lock){
+    while(bh->b_status.b_lock==true){
         puts("waiting for buffer to get unlocked\n");
-        continue;  //semaphores etc can be used 
+        // continue;  //semaphores etc can be used 
         /*
             putting on continuous while loop will damage cpu resources
             jar multi-processing implement kela tar he change karava lagel
@@ -74,7 +74,8 @@ struct buffer_head* create_buffers(unsigned short blkno,unsigned short dev){
     bh->b_status.b_count=0;
     bh->b_status.b_dirt=false;
     bh->b_status.b_lock=false;
-    bh->b_status.b_uptodate=true;
+    bh->b_status.b_uptodate=false;
+    return bh;
 }
 
 static void insert_into_queues(struct buffer_head* bh){
@@ -110,17 +111,182 @@ static void insert_into_queues(struct buffer_head* bh){
     freelist.tail->nextfree=freelist.head;
 }
 
-static void remove_from_queues(struct buffer_head* bh){
+
+/*
+    For delayed write case: this function inserts at beginning of freelist
+
+*/
+
+static void insert_at_beg(struct buffer_head* bh){
+    if(freelist.head==NULL && freelist.tail==NULL){
+        freelist.head=bh;
+        freelist.tail=bh;
+    }
+    else{
+        bh->nextfree=freelist.head;
+        freelist.head->prevfree=bh;
+        freelist.head=bh;
+
+        freelist.head->prevfree=freelist.tail;
+        freelist.tail->nextfree=freelist.head;
+    }
+}
+
+/*
+    For normal case: this function inserts at end of freelist
+
+*/
+
+static void insert_at_end(struct buffer_head* bh){
+     if(freelist.head==NULL && freelist.tail==NULL){
+        freelist.head=bh;
+        freelist.tail=bh;
+    }
+    else{
+        freelist.tail->nextfree=bh;
+        bh->prevfree=freelist.tail;
+        freelist.tail=freelist.tail->nextfree;
+        freelist.head->prevfree=freelist.tail;
+        freelist.tail->nextfree=freelist.head;
+
+    }
+}
+
+static struct buffer_head* remove_from_bpool(struct buffer_head* bh){
     /*
         removing from hash queue
     */
-   
+    int index=_hashfn(bh->b_dev,bh->b_blocknr);
+    struct buffer_head* get=NULL;
+    if(h_table.header[index].head==NULL && h_table.header[index].tail==NULL){ //hashqueue is empty
+        return NULL;
+    }
+    else if(h_table.header[index].head == h_table.header[index].tail){  //only one element on hashqueue
+        get=h_table.header[index].head;
+        h_table.header[index].head=NULL;
+        h_table.header[index].tail=NULL;
 
-   
+    }   
+    else{
+        if(h_table.header[index].head->b_blocknr==bh->b_blocknr){  //delete first
+            get=h_table.header[index].head;
+            h_table.header[index].head=h_table.header[index].head->next;
+            h_table.header[index].head->prev=NULL;
+        }
+        else if(h_table.header[index].tail->b_blocknr==bh->b_blocknr){  //delete last
+                get=h_table.header[index].tail;
+                h_table.header[index].tail=h_table.header[index].tail->prev;
+                h_table.header[index].tail->next=NULL;
+        }   
+        else{       //remove from mid
+                get=bh;
+                get->next->prev=get->prev;
+                get->prev->next=get->next;
+
+        }
+    }
+    get->next=NULL;
+    get->prev=NULL;
+    return get;  
 }
 
 
-void display();
+static struct buffer_head* deletefirst(struct buffer_head* bh){
+    struct buffer_head* get=NULL; 
+    if(freelist.head==NULL && freelist.tail==NULL){
+        return NULL;
+    }
+    else if(freelist.head==freelist.tail){
+        get=freelist.head;
+        freelist.head=NULL;
+        freelist.tail=NULL;
+    }
+    else{
+        get=bh;
+        freelist.head->nextfree->prevfree=freelist.tail;
+        freelist.tail->nextfree=freelist.head->nextfree;
+        freelist.head=freelist.head->nextfree;
+
+        freelist.head->prevfree=freelist.tail;
+        freelist.tail->nextfree=freelist.head;
+        get->nextfree=NULL;
+        get->prevfree=NULL;
+    }
+
+
+}
+
+static struct buffer_head* deletelast(struct buffer_head* bh){
+    struct buffer_head* get=NULL; 
+    if(freelist.head==NULL && freelist.tail==NULL){
+        return NULL;
+    }
+    else if(freelist.head==freelist.tail){
+        get=freelist.head;
+        freelist.head=NULL;
+        freelist.tail=NULL;
+    }
+    else{
+        get=bh;
+        freelist.tail->prevfree->nextfree=freelist.head;
+        freelist.head->prevfree=freelist.tail->prevfree;
+        freelist.tail=freelist.tail->prevfree;
+
+        freelist.head->prevfree=freelist.tail;
+        freelist.tail->nextfree=freelist.head;
+        get->nextfree=NULL;
+        get->prevfree=NULL;
+    }
+
+
+}
+
+static struct buffer_head* remove_from_blist(struct buffer_head* bh){
+    struct buffer_head* get=NULL;
+    if(freelist.head==NULL && freelist.tail==NULL){
+        return NULL;
+    }
+    else if(freelist.head==freelist.tail){
+        get=deletelast(bh);
+    }
+    else {
+        if(freelist.head->b_blocknr==bh->b_blocknr){
+            get=deletefirst(bh);
+        }
+        else if(freelist.tail->b_blocknr==bh->b_blocknr){
+            get=deletelast(bh);
+        }
+        else{
+            get=bh;
+            get->nextfree->prevfree=get->prevfree;
+            get->prevfree->nextfree=get->nextfree;
+            get->nextfree=NULL;
+            get->prevfree=NULL;
+        }
+
+    }
+    return get;
+}
+
+void display_buffers(){
+    struct buffer_head* bh=NULL;
+    for(int i=0;i<NR_HASH;i++){
+        printf("For header number %d\n",i);
+        bh=h_table.header[i].head;
+        while(bh){
+            printf("buffer for blkno %d\n",bh->b_blocknr);
+            bh=bh->next;
+        }
+        puts("\n");
+    }
+    puts("Displaying free buffer list\n");
+    bh=freelist.head;
+    do{
+        printf("block_no %d\t",bh->b_blocknr);
+        bh=bh->nextfree;
+    }while(bh!=freelist.head);
+    puts("\n");
+}
 
 static struct buffer_head* find_buffer(int dev,int block){
     struct buffer_head* temp=NULL;
@@ -141,14 +307,14 @@ repeat:
         return NULL;
     }
     bh->b_status.b_count++;
-    wait_on_buffer(bh);
+  //  wait_on_buffer(bh);
     if(bh->b_dev!=dev || bh->b_blocknr!=block){
         brelse(bh);
         goto repeat; 
     }
     return bh;    
 }
-void init_buffer(void){
+void init_buffers(){
    
    //  void *b=(void*)BUFFER_END;
     h_table.size=NR_HASH;
@@ -177,13 +343,13 @@ struct buffer_head* getblk(int dev,int block){
 repeat:
     if(temp=get_hash_table(dev,block))
     {
-        if(temp->b_status.b_lock){  /* Scenario 5 */
-            wait_on_buffer(temp);
+        if(temp->b_status.b_lock==true){  /* Scenario 5 */
+      //      wait_on_buffer(temp);
             goto repeat;
         }
         temp->b_status.b_lock=true; /*Scenario 1*/
         temp->b_status.b_count++;
-        remove_from_queues(temp);
+        remove_from_blist(temp);
         return temp;
     }
     else{
@@ -195,7 +361,7 @@ repeat:
            goto repeat;
         }
         temp->b_status.b_count++;
-        remove_from_queues(temp);
+        remove_from_blist(freelist.head);
         /*
         Scenario 3 : buffer marked for delayed-write 
         */
@@ -219,9 +385,14 @@ void brelse(struct buffer_head* buf){
     if(!buf){
         return;
     }
-    wait_on_buffer(buf);
-    if(!(buf->b_status.b_count--)){
-        panic("Trying to free buffer\n");
+   // wait_on_buffer(buf);
+    if(buf->b_status.b_dirt==true){
+        insert_at_beg(buf);
+        puts("brelse delayed write\n");
+    }
+    else {
+        insert_at_end(buf);
+        puts("brelse normal\n");
     }
     buf->b_status.b_lock=false;  //unlock the buffer
     //actually call wake_up(&buffer_wait)  
@@ -236,15 +407,13 @@ struct buffer_head* bread(int dev,int block){
 
     if(!(bh=getblk(dev,block)))
         panic("bread: getblk failed\n");
-    if(bh->b_status.b_uptodate)
-        return bh;
+     if(bh->b_status.b_uptodate)
+         return bh;
     ll_rw_block(READ,bh);
+    bh->b_status.b_uptodate=true;  //buffer contains valid data
     puts("Reading block\n");
-    if(bh->b_status.b_uptodate){
-        return bh;
-    }
-    brelse(bh);
-    return NULL;
+    
+   return bh;
 }
 
 
@@ -258,10 +427,12 @@ void bwrite(struct buffer_head* bh){
             brelse(bh);
         }
     */
+    ll_rw_block(WRITE,bh);
     if(bh->b_status.b_dirt==true){
         bh->b_status.b_uptodate=false; /*
             marking buffer as "old" i.e not upto-date 
             so it will remain at head of list
         */
+        insert_at_beg(bh);
     }
 }
