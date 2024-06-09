@@ -262,6 +262,10 @@ static struct ii_node* remove_from_ipool(struct ii_node* inode){
 }
 
 
+/*
+    @fn: init_inodes
+    @brief: initalise all in-core inodes
+*/
 void init_inodes(){
     i_pool.size=DEVICE_NUM;
     for(int i=0;i<i_pool.size;i++){
@@ -279,7 +283,9 @@ void init_inodes(){
     }
 };
 
-
+/*  @fn: display_inode
+    @brief: displays inode hashqueue and inode freelist
+*/
 void display_inodes(){
     struct ii_node* inode=NULL;
     for(int i=0;i<NR_HASH;i++){
@@ -301,7 +307,8 @@ void display_inodes(){
 }
 
 /*
-    @return: inode of given number
+    @fn: iget
+    @return: locked inode
     @param: FileSystem number
             inode number
 
@@ -337,6 +344,11 @@ struct ii_node* iget(int dev,int i_num){
         return get;
 }
 
+/*
+    @fn: iput
+    @param: address of inode
+    @brief: rel
+*/
 void iput(struct ii_node* inode){
     lock_inode(inode);
     inode->i_refcount--;
@@ -344,7 +356,7 @@ void iput(struct ii_node* inode){
         if(inode->i_nlinks==0){
             //free disk blocks of respective file
             inode->filetype=0;
-           // ifree(inode);
+            ifree(inode);
         }
         if(inode->i_status.update==true){
             write_inode(inode);
@@ -356,6 +368,8 @@ void iput(struct ii_node* inode){
 
 
 /*
+    @fn: read_inode
+    @param: address of inode
     @brief: This function reads an disk_inode into in-core inode
     It does this via accessing the block number of disk_inodes kept
     then gets a buffer for the block and reads the inodes into the buffer
@@ -404,13 +418,14 @@ static void read_inode(struct ii_node* inode){
 
 }
 /*
- @brief: This function write an in-core into disk_inode
+
+    @fn: write_inode
+    @param: inode address
+    @brief: This function write an in-core into disk_inode
     It does this via accessing the block number of disk_inodes kept
     then gets a buffer for the block and reads the inodes into the buffer
     It then knows which index to acces as buffer contains an array of inodes
     
-
-
 */
 static void write_inode(struct ii_node* inode){
     struct super* sb=NULL;
@@ -444,6 +459,8 @@ static void write_inode(struct ii_node* inode){
 }
 
 /*
+    @fn: ialloc
+    @param: device number
     @brief: allocates inode to a new file
 */
 struct ii_node* ialloc(int dev){
@@ -505,6 +522,8 @@ struct ii_node* ialloc(int dev){
 }
 
 /*
+    @fn: ifree
+    @param: inode number
     @brief: make inode free
 
 */
@@ -521,4 +540,28 @@ void ifree(int num){
     else{
         super_block.s_free_inodes_ls[super_block.s_next_free_inode++]=num;
     }
+}
+
+
+/*
+
+    @fn: bmap
+    @param: inode of file
+            byte offset to file
+    
+    @return:    
+        logical block number corresponding to byte offset   - output 1
+        starting byte of the above block                    - output 2
+        number of bytes to copy to user(from above 2)       - output 3
+        check whether "read-ahead" can be applicable or not and mark the inode  -  output 4
+
+    @attention: only works for direct blocks     
+*/
+
+
+int bmap(struct ii_node* inode,int offset){
+    //int size=inode->i_size;
+    int index=offset/BLOCK_SIZE;
+
+    return inode->i_disk[index];
 }

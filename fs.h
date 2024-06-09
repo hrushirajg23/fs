@@ -4,6 +4,7 @@
 #include<stdint.h>
 #include<stdlib.h>
 #ifndef _FILESYS_H
+
 #define _FILESYS_H
 #define TOTAL_INODES 28
 #define FILE_TABLE_SIZE 64
@@ -132,6 +133,10 @@ struct u_area {
     struct u_io io;
 }uarea;
 
+struct blk_node{
+    int array[100];
+    struct blk_node* next;
+};
 
 struct super{
     /*
@@ -139,9 +144,9 @@ struct super{
     */
     int s_fs_size; //size_of_filesystem
     unsigned short s_nfree_blk; //number of freeblocks
-    unsigned short s_free_blk_ls[50]; //list of free disk block numbers
+  //  unsigned short s_free_blk_ls[50]; //list of free disk block numbers
+    struct blk_node* s_free_blk_ls;
     unsigned short s_next_free_blk; //index of next_free block number
-    int* blk_list;
     /*
         Regarding inode
     */
@@ -241,11 +246,11 @@ If experimenting with may super block fails use one only
 extern struct buffer_head* start_buffer;
 extern int tot_buffers;
 
-extern int bmap(struct ii_node* inode,int block);
+
 extern int create_block(struct ii_node* inode,int block);
 extern struct ii_node* namei(const char* pathname);
-extern int open_namei(const char* pathname,int flag,int mode,struct ii_node** res_inode);
 extern void iput(struct ii_node* inode);
+
 
 extern void init_inodes();
 extern struct ii_node* iget(int dev,int num);
@@ -257,7 +262,7 @@ extern void brelse(struct buffer_head* buf);
 extern struct buffer_head* bread(int dev,int block);
 extern void bwrite(struct buffer_head* bh);
 extern void init_buffers();
-
+extern void create_entry(const char* filename,int i_num);
 extern struct buffer_head* alloc(int dev);
 extern void free_blk(int num);
 
@@ -271,6 +276,7 @@ extern struct ii_node* ialloc(int dev);
 extern void display_inodes();
 extern void display_buffers();
 extern void display_super();
+extern int bmap(struct ii_node* inode,int offset);
 /*
 extern tells the compiler that the function or variable is defined in another source file or translation unit
 inline suggests to the compiler to inline the function to reduce call overhead.
@@ -278,6 +284,15 @@ inline suggests to the compiler to inline the function to reduce call overhead.
 extern struct super* get_super(int dev);
 
 
+
+
+/*
+
+Syscalls: 
+
+*/
+
+extern int create_file(const char* filename,unsigned short permissions);
 
 struct filesystem{
     char boot_blk[BLOCK_SIZE]; //1024 bytes
@@ -291,5 +306,6 @@ extern struct filesystem deb;
 extern char logical_blocks[BLOCK_SIZE*TOTAL_BLOCKS];
 
 extern void copy_to_logical_blocks(char* logical_blocks,struct filesystem* fs);
+
 
 #endif

@@ -84,8 +84,19 @@ int block_read(int dev,long* pos,char* buf,int count){
 extern void rw_hd(int rw,struct buffer_head* bh);
 
 struct buffer_head* alloc(int dev){
+     struct buffer_head* bh=NULL;
+     while(super_block.s_locked)
+          continue;
      
+     int blkno=super_block.s_free_blk_ls->array[super_block.s_next_free_blk--];
+     if(!(bh=getblk(dev,blkno)))
+          return NULL;
+     memset(bh->b_data,'\0',sizeof(bh->b_data));
+     super_block.s_mod=true;
+     return bh;
 }
+
+void free_blk(){};
 void ll_rw_block(int rw,struct buffer_head* bh){
      int blkno=bh->b_blocknr;
      if(rw==READ){
@@ -99,3 +110,4 @@ void ll_rw_block(int rw,struct buffer_head* bh){
           panic("GIve either read or write\n");
      }
 }
+

@@ -66,11 +66,17 @@ static inline void init_file_table(){
 
 static inline void init_super(){
     super_block.s_dev=DEVICE_NUM;
-    // for(int i=4;i<TOTAL_BLOCKS/2;i++){
-    //     super_block.s_free_blk_ls[i-4]=i;
-    // }
-    super_block.blk_list=(int*)malloc(sizeof(int));
-    super_block.s_next_free_blk=4;
+    super_block.s_free_blk_ls=(struct blk_node*)malloc(sizeof(struct blk_node));
+    super_block.s_free_blk_ls->next=NULL;
+    int index=0;
+    for(int i=99;i>=0;i--,index++){
+            super_block.s_free_blk_ls->array[index]=i;
+    }
+    /*
+    
+        index of next free block
+    */
+    super_block.s_next_free_blk=95;
     super_block.s_locked=false;
     super_block.s_mod=false;
     super_block.s_dev=DEVICE_NUM;
