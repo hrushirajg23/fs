@@ -37,7 +37,7 @@ int block_write(int dev,long* pos,char* buf,int count){
           written+=chars;
           count-=chars;
           while(chars-->0){
-               *(p++)=get_fs_byte(buf++);
+             //  *(p++)=get_fs_byte(buf++);
                
           }
           bh->b_status.b_dirt=1;
@@ -73,7 +73,7 @@ int block_read(int dev,long* pos,char* buf,int count){
           read+=chars;
           count-=chars;
           while(chars-->0){
-               put_fs_byte(*(p++),buf++);
+           //    put_fs_byte(*(p++),buf++);
           }
           bh->b_status.b_dirt=1;
           brelse(bh);
@@ -96,15 +96,15 @@ struct buffer_head* alloc(int dev){
      return bh;
 }
 
-void free_blk(){};
+void free_blk(int num){};
 void ll_rw_block(int rw,struct buffer_head* bh){
      int blkno=bh->b_blocknr;
      if(rw==READ){
           printf("\nReading from %p to %p\n",&logical_blocks[blkno*BLOCK_SIZE],&logical_blocks[blkno*2*BLOCK_SIZE]);
-          strncpy(bh->b_data,&logical_blocks[blkno*BLOCK_SIZE],BLOCK_SIZE);
+          memcpy(bh->b_data,logical_blocks+(blkno*BLOCK_SIZE),BLOCK_SIZE);
      }
      else if(rw==WRITE){
-          strncpy(logical_blocks+(blkno*BLOCK_SIZE),bh->b_data,BLOCK_SIZE);
+          memcpy(logical_blocks+(blkno*BLOCK_SIZE),bh->b_data,BLOCK_SIZE);
      }
      else{
           panic("GIve either read or write\n");

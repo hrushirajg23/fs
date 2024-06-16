@@ -11,7 +11,7 @@ int total_inodes=100;
 
 struct inode_pool i_pool;
 struct inode_list i_list;
-struct ii_node inode_table[TOTAL_INODES];
+
 
 static void write_inode(struct ii_node* inode);
 static void read_inode(struct ii_node* inode);
@@ -356,7 +356,7 @@ void iput(struct ii_node* inode){
         if(inode->i_nlinks==0){
             //free disk blocks of respective file
             inode->filetype=0;
-            ifree(inode);
+            ifree(inode->i_num);
         }
         if(inode->i_status.update==true){
             write_inode(inode);

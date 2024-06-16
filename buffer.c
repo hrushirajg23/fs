@@ -408,6 +408,7 @@ struct buffer_head* bread(int dev,int block){
     if(!(bh=getblk(dev,block)))
         panic("bread: getblk failed\n");
      if(bh->b_status.b_uptodate)
+        puts("buffer uptodate\n");
          return bh;
     ll_rw_block(READ,bh);
     bh->b_status.b_uptodate=true;  //buffer contains valid data

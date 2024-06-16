@@ -4,8 +4,8 @@
 struct super super_block;
 struct filesystem deb;
 
-struct ii_node inode_table[TOTAL_INODES]; //in-core inode table
-struct file file_table[FILE_TABLE_SIZE]; //file table
+// struct ii_node inode_table[TOTAL_INODES]; //in-core inode table
+// struct file file_table[FILE_TABLE_SIZE]; //file table
 struct super* get_super(int dev){
     if(super_block.s_dev==dev){
         return &super_block;
@@ -44,7 +44,11 @@ void copy_to_logical_blocks(char* logical_blocks,struct filesystem* fs){
 
 static inline void init_uarea(){
     uarea.curr_dir=NULL;
-    memset(uarea.fd_arrays,-1,sizeof(uarea.fd_arrays));
+    //memset(uarea.fd_arrays,NULL,sizeof(uarea.fd_arrays));
+    for(int i=0;i<50;i++){
+        uarea.fd_arrays[i]=NULL;
+    }
+    memset(uarea.pwd,'\0',sizeof(uarea.pwd));
     uarea.root=NULL;
     uarea.io.address=NULL;
     uarea.io.count=0;
@@ -61,6 +65,12 @@ static inline void init_file_table(){
         file_table[i].f_pos_read=0;
         file_table[i].f_pos_write=0;
     
+    }
+}
+
+static void init_ii_table(){
+    for(int i=0;i<TOTAL_INODES;i++){
+        inode_table[i]=NULL;
     }
 }
 
@@ -93,6 +103,7 @@ void mount_root(int dev){
     init_uarea();
     init_file_table();
     init_super();
+    init_ii_table();
   
     uarea.root=ialloc(dev);
     uarea.root->filetype=DIR;
@@ -103,11 +114,16 @@ void mount_root(int dev){
     }
     uarea.curr_dir=uarea.root;
     uarea.curr_dir->filetype=DIR;
-    bh=bread(dev,1);
+    uarea.pwd[0]='/';
+    //bh=bread(dev,1);
+    create_entry(".",0);
+    create_entry("..",0);
+    create_file("unix.txt",0777);
+    create_file("etc",0777);
+    openfile("unix.txt",3,0);
+    //printf(" Super block data is %s\n",bh->b_data);
 
-    printf(" Super block data is %s\n",bh->b_data);
-
-    brelse(bh);    
+    //brelse(bh);    
 
 }
 

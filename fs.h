@@ -33,7 +33,7 @@ extern int total_inodes;
 #define DIR_ENTRIES_PER_BLOCK ((BLOCK_SIZE)/sizeof(struct dir_entry))
 
 
-#define NAME_SIZE 20
+#define NAME_SIZE 14
 
 typedef char buffer_block[BLOCK_SIZE];
 struct status{
@@ -127,10 +127,11 @@ struct u_io{
     @brief: user area of process
 */
 struct u_area {
-    int fd_arrays[50];
+    struct file* fd_arrays[50];
     struct ii_node* curr_dir;
     struct ii_node* root;
     struct u_io io;
+    char pwd[100];
 }uarea;
 
 struct blk_node{
@@ -234,7 +235,7 @@ extern struct inode_list i_list;
 
 
 
-extern struct ii_node inode_table[TOTAL_INODES]; //in-core inode table
+extern struct ii_node* inode_table[TOTAL_INODES]; //in-core inode table
 extern struct file file_table[FILE_TABLE_SIZE]; //file table
 extern struct super super_block;
 /*
@@ -262,9 +263,9 @@ extern void brelse(struct buffer_head* buf);
 extern struct buffer_head* bread(int dev,int block);
 extern void bwrite(struct buffer_head* bh);
 extern void init_buffers();
-extern void create_entry(const char* filename,int i_num);
+extern void create_entry(const char* filename,unsigned short i_num);
 extern struct buffer_head* alloc(int dev);
-extern void free_blk(int num);
+//extern void free_blk(int num);
 
 extern int new_block(int dev);
 extern void free_block(int dev,int block);
@@ -282,6 +283,14 @@ extern tells the compiler that the function or variable is defined in another so
 inline suggests to the compiler to inline the function to reduce call overhead.
 */
 extern struct super* get_super(int dev);
+extern  int allocateitable(struct ii_node* ref);
+extern  int allocatefile(int i_index);
+extern  int allocatefd(int f_index);
+
+
+
+
+
 
 
 
@@ -293,6 +302,23 @@ Syscalls:
 */
 
 extern int create_file(const char* filename,unsigned short permissions);
+
+/*
+    system call open
+    int open(filepath,int flags,int perm);
+    
+    filename/path:- String which has path of file what we want to open. 
+                    The path may be relative or absolute.  
+
+    flags:- This specifies the "way" bh which the file should be opened i.e for reading or writing or both 
+
+    modes/perm: This specifies the "file permissions " if file is to be created with open system call
+*/
+
+extern int openfile(const char* filename,int flags,int perm);
+
+
+
 
 struct filesystem{
     char boot_blk[BLOCK_SIZE]; //1024 bytes
